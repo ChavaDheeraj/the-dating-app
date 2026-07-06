@@ -4,12 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
-    "build": "next build --webpack",
+    "build": "prisma generate && next build --webpack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
-    "@next/swc-win32-x64-msvc": "^16.2.10",
     "@prisma/client": "^5.22.0",
     "framer-motion": "^12.42.2",
     "lucide-react": "^1.23.0",
