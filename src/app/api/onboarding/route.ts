@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { calculateVibeCompatibility } from '@/lib/vibeEngine';
 
+const toNumber = (value: unknown, fallback: number) => {
+  const parsed = typeof value === 'number' ? value : parseInt(String(value ?? ''), 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -20,33 +25,58 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing required fields: email, name, age, or survey" }, { status: 400 });
     }
 
-    // 1. Create user, profile, and survey in a transaction
-    const newUser = await db.user.create({
-      data: {
+    const profileCreateData = {
+      age: toNumber(age, 24),
+      bio: bio || "",
+      avatar: "linear-gradient(135deg, #FF5D8F 0%, #E8E4FF 100%)",
+      interests: JSON.stringify(interests || []),
+      gender: gender || "Other",
+      preferences: JSON.stringify(preferences || { gender: "All", ageMin: 18, ageMax: 99, relationshipPreference: "open" })
+    };
+
+    const profileUpdateData = {
+      age: toNumber(age, 24),
+      ...(bio !== undefined ? { bio } : {}),
+      ...(gender !== undefined ? { gender } : {}),
+      ...(interests !== undefined ? { interests: JSON.stringify(interests) } : {}),
+      ...(preferences !== undefined ? { preferences: JSON.stringify(preferences) } : {})
+    };
+
+    const surveyData = {
+      communication: toNumber(survey.communication, 3),
+      lifePace: toNumber(survey.lifePace, 3),
+      conflictRes: toNumber(survey.conflictRes, 3),
+      socialBattery: toNumber(survey.socialBattery, 3),
+      humorType: toNumber(survey.humorType, 3),
+      valuesScale: toNumber(survey.valuesScale, 3),
+      curiosity: toNumber(survey.curiosity, 3),
+      adventure: toNumber(survey.adventure, 3),
+      openness: toNumber(survey.openness, 3),
+      spontaneity: toNumber(survey.spontaneity, 3)
+    };
+
+    // 1. Create or update user, profile, and survey. This keeps demo fast-login
+    // and repeated onboarding submissions from failing on duplicate emails.
+    const newUser = await db.user.upsert({
+      where: { email },
+      create: {
         email,
         name,
+        profile: { create: profileCreateData },
+        survey: { create: surveyData }
+      },
+      update: {
+        name,
         profile: {
-          create: {
-            age: parseInt(age),
-            bio: bio || "",
-            avatar: "linear-gradient(135deg, #FF5D8F 0%, #E8E4FF 100%)", // Premium Light Red to Lavender theme gradient
-            interests: JSON.stringify(interests || []),
-            gender: gender || "Other",
-            preferences: JSON.stringify(preferences || { gender: "All", ageMin: 18, ageMax: 99 })
+          upsert: {
+            create: profileCreateData,
+            update: profileUpdateData
           }
         },
         survey: {
-          create: {
-            communication: parseInt(survey.communication) || 3,
-            lifePace: parseInt(survey.lifePace) || 3,
-            conflictRes: parseInt(survey.conflictRes) || 3,
-            socialBattery: parseInt(survey.socialBattery) || 3,
-            humorType: parseInt(survey.humorType) || 3,
-            valuesScale: parseInt(survey.valuesScale) || 3,
-            curiosity: parseInt(survey.curiosity) || 3,
-            adventure: parseInt(survey.adventure) || 3,
-            openness: parseInt(survey.openness) || 3,
-            spontaneity: parseInt(survey.spontaneity) || 3
+          upsert: {
+            create: surveyData,
+            update: surveyData
           }
         }
       },
@@ -74,6 +104,19 @@ export async function POST(req: NextRequest) {
 
     const matchCreations = [];
     for (const other of otherUsers) {
+      const existingMatch = await db.match.findFirst({
+        where: {
+          OR: [
+            { user1Id: newUser.id, user2Id: other.id },
+            { user1Id: other.id, user2Id: newUser.id }
+          ]
+        }
+      });
+
+      if (existingMatch) {
+        continue;
+      }
+
       const vibe = calculateVibeCompatibility(
         newUser.survey,
         other.survey,

@@ -26,19 +26,22 @@ interface SurveyData {
   spontaneity: number;
 }
 
-interface MatchesProfileResponse {
-  currentUserSurvey?: Partial<SurveyData> & {
-    user?: {
-      profile?: {
-        age?: number;
-        bio?: string;
-        avatar?: string;
-        interests?: string;
-        gender?: string;
-      };
-    };
-  };
+interface ProfileApiResponse {
   success: boolean;
+  error?: string;
+  user?: {
+    id: string;
+    name: string;
+    email: string;
+  };
+  profile?: {
+    age: number;
+    bio: string;
+    avatar: string;
+    interests: string;
+    gender: string;
+  } | null;
+  survey?: Partial<SurveyData> | null;
 }
 
 export default function Profile() {
@@ -47,6 +50,8 @@ export default function Profile() {
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [survey, setSurvey] = useState<SurveyData | null>(null);
   const [bioText, setBioText] = useState('');
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [profileError, setProfileError] = useState('');
   const [saving, setSaving] = useState(false);
 
   // Philosophy Preference
@@ -96,40 +101,65 @@ export default function Profile() {
     };
   };
 
-  const fetchUserProfile = useCallback(async (userId: string) => {
+  const parseInterests = (interests: string | undefined) => {
+    if (!interests) return ["books", "coding", "espresso", "travel"];
     try {
-      const res = await fetch(`/api/matches?userId=${userId}`);
-      const data = await res.json() as MatchesProfileResponse;
-      if (data.success) {
-        const dbProfile = data.currentUserSurvey?.user?.profile;
-        const mockProfile: ProfileData = {
-          age: dbProfile?.age || 24,
-          bio: localStorage.getItem('vibe_bio') || dbProfile?.bio || "Passionate prototype reviewer exploring relationship matching algorithms. Let's talk tech!",
-          avatar: localStorage.getItem('vibe_avatar') || dbProfile?.avatar || "linear-gradient(135deg, #D6336C 0%, #7C7AE6 100%)",
-          interests: dbProfile?.interests ? JSON.parse(dbProfile.interests) : ["books", "coding", "espresso", "travel"],
-          gender: dbProfile?.gender || "Non-binary"
-        };
+      const parsed = JSON.parse(interests);
+      return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
+    } catch {
+      return ["books", "coding", "espresso", "travel"];
+    }
+  };
 
-        const dbSurvey = data.currentUserSurvey;
-        const mockSurvey: SurveyData = {
-          communication: dbSurvey?.communication || 3,
-          lifePace: dbSurvey?.lifePace || 4,
-          conflictRes: dbSurvey?.conflictRes || 3,
-          socialBattery: dbSurvey?.socialBattery || 4,
-          humorType: dbSurvey?.humorType || 3,
-          valuesScale: dbSurvey?.valuesScale || 4,
-          curiosity: dbSurvey?.curiosity || 4,
-          adventure: dbSurvey?.adventure || 3,
-          openness: dbSurvey?.openness || 4,
-          spontaneity: dbSurvey?.spontaneity || 3
-        };
-
-        setProfile(mockProfile);
-        setSurvey(mockSurvey);
-        setBioText(mockProfile.bio);
+  const fetchUserProfile = useCallback(async (userId: string) => {
+    setProfileLoading(true);
+    setProfileError('');
+    try {
+      const res = await fetch(`/api/profile?userId=${userId}`);
+      const data = await res.json() as ProfileApiResponse;
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Profile could not be loaded.');
       }
+
+      if (data.user) {
+        const user = { id: data.user.id, name: data.user.name };
+        setCurrentUser(user);
+        localStorage.setItem('vibe_user', JSON.stringify(user));
+      }
+
+      const dbProfile = data.profile;
+      const mockProfile: ProfileData = {
+        age: dbProfile?.age || 24,
+        bio: localStorage.getItem('vibe_bio') || dbProfile?.bio || "Passionate prototype reviewer exploring relationship matching algorithms. Let's talk tech!",
+        avatar: localStorage.getItem('vibe_avatar') || dbProfile?.avatar || "linear-gradient(135deg, #D6336C 0%, #7C7AE6 100%)",
+        interests: parseInterests(dbProfile?.interests),
+        gender: dbProfile?.gender || "Non-binary"
+      };
+
+      const dbSurvey = data.survey;
+      const mockSurvey: SurveyData = {
+        communication: dbSurvey?.communication || 3,
+        lifePace: dbSurvey?.lifePace || 4,
+        conflictRes: dbSurvey?.conflictRes || 3,
+        socialBattery: dbSurvey?.socialBattery || 4,
+        humorType: dbSurvey?.humorType || 3,
+        valuesScale: dbSurvey?.valuesScale || 4,
+        curiosity: dbSurvey?.curiosity || 4,
+        adventure: dbSurvey?.adventure || 3,
+        openness: dbSurvey?.openness || 4,
+        spontaneity: dbSurvey?.spontaneity || 3
+      };
+
+      setProfile(mockProfile);
+      setSurvey(mockSurvey);
+      setBioText(mockProfile.bio);
     } catch (e) {
       console.error(e);
+      setProfile(null);
+      setSurvey(null);
+      setProfileError(e instanceof Error ? e.message : 'Profile could not be loaded.');
+    } finally {
+      setProfileLoading(false);
     }
   }, []);
 
@@ -251,6 +281,8 @@ export default function Profile() {
     };
   };
 
+  const profileReady = currentUser && profile && survey;
+
   return (
     <div className="w-full min-h-[calc(100vh-64px)] bg-bg-light py-8 px-4 sm:px-6 lg:px-8 flex justify-center animate-fadeIn font-sans">
       <div className="max-w-4xl w-full grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
@@ -267,7 +299,30 @@ export default function Profile() {
             <User className="w-6 h-6 text-primary" />
           </header>
 
-          {currentUser && profile && survey && (
+          {profileLoading && (
+            <div className="bg-white border border-hairline p-6">
+              <div className="px-4 py-3 border border-hairline bg-gray-50 text-[10px] font-black uppercase tracking-widest text-gray-400 animate-pulse">
+                Loading saved profile...
+              </div>
+            </div>
+          )}
+
+          {!profileLoading && profileError && (
+            <div className="bg-white border border-red-200 p-6 space-y-4">
+              <div>
+                <h2 className="text-sm font-black uppercase tracking-wider text-red-500">Profile could not load</h2>
+                <p className="text-xs text-gray-500 font-semibold mt-2 leading-relaxed">{profileError}</p>
+              </div>
+              <button
+                onClick={handleResetSession}
+                className="w-full py-3 border border-red-200 hover:bg-red-50 text-red-500 font-black uppercase text-[10px] tracking-wider cursor-pointer"
+              >
+                Restart onboarding
+              </button>
+            </div>
+          )}
+
+          {profileReady && (
             <div className="space-y-6">
               
               {/* Profile details & image frame */}
@@ -421,7 +476,7 @@ export default function Profile() {
         {/* Right Column: Vibe Graph, timeline and settings */}
         <div className="space-y-6">
           
-          {currentUser && profile && survey && (
+          {profileReady && (
             <div className="space-y-6">
               
               {/* Radar Chart & Dimension Explainer */}
