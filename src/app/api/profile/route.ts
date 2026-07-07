@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
 
 export async function POST(req: NextRequest) {
@@ -10,7 +11,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Missing userId" }, { status: 400 });
     }
 
-    const updateData: any = {};
+    const updateData: Prisma.ProfileUpdateInput = {};
     if (bio !== undefined) updateData.bio = bio;
     if (avatar !== undefined) updateData.avatar = avatar;
 
@@ -20,8 +21,9 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json({ success: true, profile: updatedProfile });
-  } catch (e: any) {
-    console.error("Profile update error:", e);
-    return NextResponse.json({ success: false, error: e.message }, { status: 500 });
+  } catch (error: unknown) {
+    console.error("Profile update error:", error);
+    const message = error instanceof Error ? error.message : "Failed to update profile";
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

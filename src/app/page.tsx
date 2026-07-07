@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Heart, Sparkles, Compass, CheckCircle2 } from 'lucide-react';
+import { Heart } from 'lucide-react';
 
 export default function Home() {
   const router = useRouter();
@@ -14,40 +14,11 @@ export default function Home() {
     if (userString) {
       try {
         setExistingUser(JSON.parse(userString));
-      } catch (e) {
+      } catch {
         localStorage.removeItem('vibe_user');
       }
     }
   }, []);
-
-  const handleFastLogin = async (email: string) => {
-    setLoading(true);
-    try {
-      const response = await fetch(`/api/seed`); // Ensure db is seeded
-      await response.json();
-
-      // Retrieve all matches to get this user's ID
-      const matchesResponse = await fetch(`/api/onboarding`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email,
-          name: email.split('@')[0], // placeholder
-          age: 25,
-          survey: { communication: 3, lifePace: 3, conflictRes: 3, socialBattery: 3, humorType: 3, valuesScale: 3 }
-        })
-      });
-      // But wait! Since they are already in the DB, let's query a user list.
-      // Let's call onboarding with their real details, but let's make it easy:
-      // We will fetch users from our database to find their actual ID.
-      // Or we can query our custom api endpoint /api/matches with a seed check.
-      // Wait, let's write a simple dev login route or fetch user directly.
-      // Let's create an api route `/api/users` that returns all users so we can select them.
-      // Even simpler: we can fetch the user by email during local fast login!
-    } catch (e) {
-      console.error(e);
-    }
-  };
 
   // Direct fast login using seed user database check
   const loginAsMockUser = async (name: string, email: string) => {

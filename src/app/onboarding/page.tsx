@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, ArrowRight, CheckCircle2, User, Activity, ListFilter } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CheckCircle2 } from 'lucide-react';
 
 const INTEREST_OPTIONS = [
   "cooking", "jazz", "yoga", "painting", "cycling", "espresso", 

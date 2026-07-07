@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { MessageSquare, Heart, Send, Sparkles, Mic, Play, MapPin, MessageCircle } from 'lucide-react';
+import { MessageSquare, Heart, Mic, Play } from 'lucide-react';
 
 interface MatchItem {
   id: string;
@@ -18,6 +18,18 @@ interface Message {
   receiverId: string;
   content: string;
   createdAt: string;
+}
+
+interface MatchRecommendation {
+  id: string;
+  name: string;
+  profile: {
+    avatar: string;
+    bio: string;
+  };
+  vibe: {
+    score: number;
+  };
 }
 
 export default function Chat() {
@@ -54,9 +66,6 @@ function ChatContent() {
   const [voiceRecording, setVoiceRecording] = useState(false);
   const [voiceTimer, setVoiceTimer] = useState(0);
 
-  // Dynamic icebreaker suggestions based on matches
-  const [suggestedIcebreakers, setSuggestedIcebreakers] = useState<string[]>([]);
-
   const getAvatarStyle = (avatarStr: string) => {
     if (!avatarStr) return {};
     if (avatarStr.startsWith('linear-gradient')) {
@@ -70,62 +79,50 @@ function ChatContent() {
     };
   };
 
-  useEffect(() => {
-    const userString = localStorage.getItem('vibe_user');
-    if (!userString) {
-      router.push('/');
-      return;
-    }
-    const parsedUser = JSON.parse(userString);
-    setCurrentUser(parsedUser);
-    fetchMatches(parsedUser.id);
-  }, [router]);
-
-  useEffect(() => {
-    // Scroll to bottom of message thread
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isTyping]);
-
-  // Read preselected matchId from URL parameter
-  useEffect(() => {
-    const paramMatchId = searchParams.get('matchId');
-    if (paramMatchId) {
-      setActiveMatchId(paramMatchId);
-      if (currentUser) {
-        fetchChatHistory(currentUser.id, paramMatchId);
-      }
-    }
-  }, [searchParams, currentUser]);
-
-  // Adjust suggested icebreakers dynamically
-  useEffect(() => {
+  const suggestedIcebreakers = useMemo(() => {
     const activeMatch = matches.find(m => m.id === activeMatchId);
     if (activeMatch) {
       if (activeMatch.name.includes("Maya")) {
-        setSuggestedIcebreakers([
+        return [
           "Hey Maya, I loved your art studio photo! What color theme are you working on today?",
           "Are you more of an itinerary vacation planner, or do you prefer spontaneous cafes?"
-        ]);
+        ];
       } else if (activeMatch.name.includes("Liam")) {
-        setSuggestedIcebreakers([
+        return [
           "Liam, how do you tamp your espresso grounds? Got any advice for a clean double shot?",
           "Let's play a round of Uno or Tic Tac Toe to test our conflict resolution styles!"
-        ]);
+        ];
       } else {
-        setSuggestedIcebreakers([
+        return [
           "Hey! Would you rather plan a quiet weekend board game dinner or a big outdoor trail hike?",
           "If our conversation hits a dry spot, do you prefer deep questions or jokes?"
-        ]);
+        ];
       }
     }
+    return [];
   }, [activeMatchId, matches]);
 
-  const fetchMatches = async (userId: string) => {
+  const fetchChatHistory = useCallback(async (senderId: string, receiverId: string) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/chat?senderId=${senderId}&receiverId=${receiverId}`);
+      const data = await res.json();
+      if (data.success) {
+        setMessages(data.messages);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const fetchMatches = useCallback(async (userId: string) => {
     try {
       const res = await fetch(`/api/matches?userId=${userId}`);
       const data = await res.json();
       if (data.success) {
-        const mappedMatches = data.recommendations.map((rec: any) => ({
+        const mappedMatches = data.recommendations.map((rec: MatchRecommendation) => ({
           id: rec.id,
           name: rec.name,
           avatar: rec.profile.avatar,
@@ -145,22 +142,47 @@ function ChatContent() {
     } catch (e) {
       console.error(e);
     }
-  };
+  }, [fetchChatHistory, searchParams]);
 
-  const fetchChatHistory = async (senderId: string, receiverId: string) => {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/chat?senderId=${senderId}&receiverId=${receiverId}`);
-      const data = await res.json();
-      if (data.success) {
-        setMessages(data.messages);
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    const userString = localStorage.getItem('vibe_user');
+    if (!userString) {
+      router.push('/');
+      return;
     }
-  };
+    const parsedUser = JSON.parse(userString);
+    setCurrentUser(parsedUser);
+    fetchMatches(parsedUser.id);
+  }, [fetchMatches, router]);
+
+  useEffect(() => {
+    // Scroll to bottom of message thread
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isTyping]);
+
+  // Read preselected matchId from URL parameter
+  useEffect(() => {
+    const paramMatchId = searchParams.get('matchId');
+    if (paramMatchId) {
+      setActiveMatchId(paramMatchId);
+      if (currentUser) {
+        fetchChatHistory(currentUser.id, paramMatchId);
+      }
+    }
+  }, [currentUser, fetchChatHistory, searchParams]);
+
+  useEffect(() => {
+    if (!voiceRecording) {
+      setVoiceTimer(0);
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setVoiceTimer(prev => prev + 1);
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, [voiceRecording]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();

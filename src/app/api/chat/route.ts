@@ -32,8 +32,8 @@ const mockReplies: Record<string, string[]> = {
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const user1Id = searchParams.get('user1Id');
-    const user2Id = searchParams.get('user2Id');
+    const user1Id = searchParams.get('user1Id') ?? searchParams.get('senderId');
+    const user2Id = searchParams.get('user2Id') ?? searchParams.get('receiverId');
 
     if (!user1Id || !user2Id) {
       return NextResponse.json({ error: "Missing user1Id or user2Id parameters" }, { status: 400 });
@@ -52,8 +52,9 @@ export async function GET(req: NextRequest) {
     });
 
     return NextResponse.json({ success: true, messages });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Failed to load chat messages";
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }
 
@@ -109,7 +110,8 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ success: true, message: newMessage });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Failed to send chat message";
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

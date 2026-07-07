@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
     if (matchUser.profile?.interests) {
       try {
         interests = JSON.parse(matchUser.profile.interests);
-      } catch (e) {
+      } catch {
         interests = [];
       }
     }
@@ -55,7 +55,8 @@ export async function GET(req: NextRequest) {
       insights: insights.insights,
       icebreakers: insights.icebreakers
     });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Failed to generate coach insights";
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

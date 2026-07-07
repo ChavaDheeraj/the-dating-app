@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Gamepad2, AlertCircle, CheckCircle2, ChevronRight, Brush, User, Play, Sparkles, X, MailCheck, Trophy, Sparkle } from 'lucide-react';
+import { Gamepad2, CheckCircle2, ChevronRight, User, Play, X, MailCheck, Trophy } from 'lucide-react';
 
 interface Scenario {
   id: string;
@@ -28,6 +28,26 @@ interface MatchPlayer {
   gender: string;
   age: number;
 }
+
+interface MatchRecommendation {
+  id: string;
+  name: string;
+  profile: {
+    avatar: string;
+    gender: string;
+    age: number;
+  };
+}
+
+type LobbyGame = 'tictactoe' | 'drawing' | 'uno' | 'never-ever' | 'would-rather';
+
+const lobbyGames: { id: LobbyGame; name: string; desc: string; tag: string }[] = [
+  { id: 'tictactoe', name: 'Tic Tac Toe', desc: 'Classic grid alignment strategy game.', tag: '🧠 Logic Duel' },
+  { id: 'drawing', name: 'Guess the Drawing', desc: 'Draw a creative prompt on the tablet canvas.', tag: '🎨 Creative Sketch' },
+  { id: 'uno', name: 'Vibe Uno Cards', desc: 'Shed cards on the active color discard pile.', tag: '🎲 Card Clash' },
+  { id: 'never-ever', name: 'Never Have I Ever', desc: 'Reveal values through vulnerability prompts.', tag: '🗣️ Conversation' },
+  { id: 'would-rather', name: 'Would You Rather', desc: 'Compare lifestyle choices and preferences.', tag: '⚖️ Value Align' }
+];
 
 const seedChoices: Record<string, Record<string, string>> = {
   "Conflict Resolution": { A: "Liam O'Connor", B: "Maya Lin, Chloe Vance", C: "", D: "Marcus Aurelius" },
@@ -61,7 +81,6 @@ function PlayroomContent() {
   
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [userAnswers, setUserAnswers] = useState<UserAnswer[]>([]);
-  const [loading, setLoading] = useState(true);
   const [activeScenarioId, setActiveScenarioId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState<string | null>(null);
 
@@ -85,7 +104,7 @@ function PlayroomContent() {
 
   // Lobby Tab States: 'dilemmas' vs 'lobby'
   const [activeTab, setActiveTab] = useState<'dilemmas' | 'lobby'>('lobby');
-  const [activeLobbyGame, setActiveLobbyGame] = useState<'tictactoe' | 'drawing' | 'uno' | 'never-ever' | 'would-rather' | null>(null);
+  const [activeLobbyGame, setActiveLobbyGame] = useState<LobbyGame | null>(null);
 
   // Game 1: Tic Tac Toe state
   const [tttBoard, setTttBoard] = useState<(string | null)[]>(Array(9).fill(null));
@@ -128,30 +147,12 @@ function PlayroomContent() {
   ];
   const [wyrAnswered, setWyrAnswered] = useState<'A' | 'B' | null>(null);
 
-  useEffect(() => {
-    const userString = localStorage.getItem('vibe_user');
-    if (!userString) {
-      router.push('/');
-      return;
-    }
-    const parsedUser = JSON.parse(userString);
-    setCurrentUser(parsedUser);
-    
-    const paramMatchId = searchParams.get('matchId');
-    if (paramMatchId) {
-      setActiveMatchId(paramMatchId);
-    }
-    
-    fetchGamesData(parsedUser.id);
-  }, [router, searchParams]);
-
-  const fetchGamesData = async (userId: string) => {
-    setLoading(true);
+  const fetchGamesData = useCallback(async (userId: string) => {
     try {
       const matchesRes = await fetch(`/api/matches?userId=${userId}`);
       const matchesData = await matchesRes.json();
       if (matchesData.success) {
-        const mappedMatches = matchesData.recommendations.map((rec: any) => ({
+        const mappedMatches = matchesData.recommendations.map((rec: MatchRecommendation) => ({
           id: rec.id,
           name: rec.name,
           avatar: rec.profile.avatar,
@@ -177,10 +178,25 @@ function PlayroomContent() {
       }
     } catch (e) {
       console.error("Games Room retrieval error:", e);
-    } finally {
-      setLoading(false);
     }
-  };
+  }, [searchParams]);
+
+  useEffect(() => {
+    const userString = localStorage.getItem('vibe_user');
+    if (!userString) {
+      router.push('/');
+      return;
+    }
+    const parsedUser = JSON.parse(userString);
+    setCurrentUser(parsedUser);
+    
+    const paramMatchId = searchParams.get('matchId');
+    if (paramMatchId) {
+      setActiveMatchId(paramMatchId);
+    }
+    
+    fetchGamesData(parsedUser.id);
+  }, [fetchGamesData, router, searchParams]);
 
   const handleSendInvite = (opponentName: string, id: string) => {
     const shortKey = id.includes('maya') ? 'maya' : id.includes('liam') ? 'liam' : id.includes('chloe') ? 'chloe' : 'marcus';
@@ -286,9 +302,9 @@ function PlayroomContent() {
       const emptyIndices = newBoard.map((val, index) => val === null ? index : null).filter(val => val !== null) as number[];
       if (emptyIndices.length > 0) {
         const randomCell = emptyIndices[Math.floor(Math.random() * emptyIndices.length)];
-        newBoard[randomCell] = 'O';
-        setTttBoard(newBoard);
-        const nextWin = checkTttWinner(newBoard);
+        const opponentBoard = newBoard.map((cell, cellIndex) => cellIndex === randomCell ? 'O' : cell);
+        setTttBoard(opponentBoard);
+        const nextWin = checkTttWinner(opponentBoard);
         if (nextWin) {
           setTttWinner(nextWin);
           if (nextWin === 'O') setTttWins(prev => ({ ...prev, opponent: prev.opponent + 1 }));
@@ -621,13 +637,7 @@ function PlayroomContent() {
             {/* LOBBY VIEW (When no game is active): 3-column Visual Grid Dashboard */}
             {!activeLobbyGame && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-fadeIn">
-                {[
-                  { id: 'tictactoe', name: 'Tic Tac Toe', desc: 'Classic grid alignment strategy game.', tag: '🧠 Logic Duel' },
-                  { id: 'drawing', name: 'Guess the Drawing', desc: 'Draw a creative prompt on the tablet canvas.', tag: '🎨 Creative Sketch' },
-                  { id: 'uno', name: 'Vibe Uno Cards', desc: 'Shed cards on the active color discard pile.', tag: '🎲 Card Clash' },
-                  { id: 'never-ever', name: 'Never Have I Ever', desc: 'Reveal values through vulnerability prompts.', tag: '🗣️ Conversation' },
-                  { id: 'would-rather', name: 'Would You Rather', desc: 'Compare lifestyle choices and preferences.', tag: '⚖️ Value Align' }
-                ].map(game => (
+                {lobbyGames.map(game => (
                   <div 
                     key={game.id}
                     className="bg-white border border-hairline p-6 flex flex-col justify-between space-y-4 hover:border-primary transition-all group"
@@ -643,7 +653,7 @@ function PlayroomContent() {
                     </div>
 
                     <button
-                      onClick={() => setActiveLobbyGame(game.id as any)}
+                      onClick={() => setActiveLobbyGame(game.id)}
                       className="w-full py-2 border border-gray-200 bg-transparent hover:bg-primary hover:border-primary hover:text-white text-dark text-[10px] font-black uppercase tracking-wider cursor-pointer transition-all flex items-center justify-center gap-1.5 font-mono"
                     >
                       <Play className="w-3 h-3 fill-current" />

@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { User, ShieldAlert, Award, LogOut, Save, Milestone, Camera, Check, X, Shield } from 'lucide-react';
+import { User, ShieldAlert, Award, LogOut, Save, Milestone, Camera, X } from 'lucide-react';
 import { VibeGraph, VibeDimensions } from '@/components/ui/VibeGraph';
 
 interface ProfileData {
@@ -24,6 +24,21 @@ interface SurveyData {
   adventure: number;
   openness: number;
   spontaneity: number;
+}
+
+interface MatchesProfileResponse {
+  currentUserSurvey?: Partial<SurveyData> & {
+    user?: {
+      profile?: {
+        age?: number;
+        bio?: string;
+        avatar?: string;
+        interests?: string;
+        gender?: string;
+      };
+    };
+  };
+  success: boolean;
 }
 
 export default function Profile() {
@@ -81,30 +96,10 @@ export default function Profile() {
     };
   };
 
-  useEffect(() => {
-    const userString = localStorage.getItem('vibe_user');
-    if (!userString) {
-      router.push('/');
-      return;
-    }
-    const parsed = JSON.parse(userString);
-    setCurrentUser(parsed);
-    fetchUserProfile(parsed.id);
-
-    // Persist mock states
-    const savedPremium = localStorage.getItem('vibe_premium') === 'true';
-    setIsPremium(savedPremium);
-    const savedPublic = localStorage.getItem('vibe_public') !== 'false';
-    setIsProfilePublic(savedPublic);
-
-    const savedPref = localStorage.getItem('vibe_pref') || 'open';
-    setRelationshipPreference(savedPref);
-  }, [router]);
-
-  const fetchUserProfile = async (userId: string) => {
+  const fetchUserProfile = useCallback(async (userId: string) => {
     try {
       const res = await fetch(`/api/matches?userId=${userId}`);
-      const data = await res.json();
+      const data = await res.json() as MatchesProfileResponse;
       if (data.success) {
         const dbProfile = data.currentUserSurvey?.user?.profile;
         const mockProfile: ProfileData = {
@@ -136,7 +131,27 @@ export default function Profile() {
     } catch (e) {
       console.error(e);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    const userString = localStorage.getItem('vibe_user');
+    if (!userString) {
+      router.push('/');
+      return;
+    }
+    const parsed = JSON.parse(userString);
+    setCurrentUser(parsed);
+    fetchUserProfile(parsed.id);
+
+    // Persist mock states
+    const savedPremium = localStorage.getItem('vibe_premium') === 'true';
+    setIsPremium(savedPremium);
+    const savedPublic = localStorage.getItem('vibe_public') !== 'false';
+    setIsProfilePublic(savedPublic);
+
+    const savedPref = localStorage.getItem('vibe_pref') || 'open';
+    setRelationshipPreference(savedPref);
+  }, [fetchUserProfile, router]);
 
   const handleSaveBio = async () => {
     if (!currentUser) return;

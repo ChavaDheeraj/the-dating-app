@@ -1,9 +1,37 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation'; // Next.js standard router import
-import { Heart, X, Check, BarChart3, AlertCircle, Sparkles, Compass, Shuffle, MapPin, MessageCircle, User } from 'lucide-react';
+import { AlertCircle, Heart, Sparkles, Shuffle } from 'lucide-react';
 import { VibeGraph, VibeDimensions } from '@/components/ui/VibeGraph';
+
+type HomeMode = 'curated' | 'browse' | 'surprise';
+type BrowseFilter = 'all' | 'similar' | 'opposite';
+
+const homeModeTabs: { id: HomeMode; label: string }[] = [
+  { id: 'curated', label: 'Today\'s AI Picks' },
+  { id: 'browse', label: 'People Nearby' },
+  { id: 'surprise', label: 'Surprise Me' }
+];
+
+const browseFilters: { id: BrowseFilter; label: string }[] = [
+  { id: 'all', label: 'All Users' },
+  { id: 'similar', label: 'Similar Vibe' },
+  { id: 'opposite', label: 'Opposite Vibe' }
+];
+
+type SurveyData = {
+  communication?: number;
+  humorType?: number;
+  curiosity?: number;
+  adventure?: number;
+  openness?: number;
+  lifePace?: number;
+  valuesScale?: number;
+  socialBattery?: number;
+  conflictRes?: number;
+  spontaneity?: number;
+};
 
 interface MatchItem {
   id: string;
@@ -39,12 +67,11 @@ interface MatchItem {
 
 export default function Feed() {
   const router = useRouter();
-  const [currentUser, setCurrentUser] = useState<{ id: string; name: string } | null>(null);
-  const [currentUserSurvey, setCurrentUserSurvey] = useState<any>(null);
+  const [currentUserSurvey, setCurrentUserSurvey] = useState<SurveyData | null>(null);
   const [recommendations, setRecommendations] = useState<MatchItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [homeMode, setHomeMode] = useState<'curated' | 'browse' | 'surprise'>('curated');
-  const [browseFilter, setBrowseFilter] = useState<'all' | 'similar' | 'opposite'>('all');
+  const [homeMode, setHomeMode] = useState<HomeMode>('curated');
+  const [browseFilter, setBrowseFilter] = useState<BrowseFilter>('all');
   const [showMatchModal, setShowMatchModal] = useState<MatchItem | null>(null);
 
   // Profile Details Overlay States
@@ -54,27 +81,7 @@ export default function Feed() {
   // Active indices for curated swiper
   const [curatedIndex, setCuratedIndex] = useState(0);
 
-  useEffect(() => {
-    const userString = localStorage.getItem('vibe_user');
-    if (!userString) {
-      router.push('/');
-      return;
-    }
-    
-    const parsedUser = JSON.parse(userString);
-    setCurrentUser(parsedUser);
-    fetchRecommendations(parsedUser.id);
-  }, []);
-
-  useEffect(() => {
-    if (selectedProfileDetail) {
-      setActivePhoto(selectedProfileDetail.profile.avatar);
-    } else {
-      setActivePhoto('');
-    }
-  }, [selectedProfileDetail]);
-
-  const fetchRecommendations = async (userId: string) => {
+  const fetchRecommendations = useCallback(async (userId: string) => {
     setLoading(true);
     try {
       const res = await fetch(`/api/matches?userId=${userId}`);
@@ -84,11 +91,30 @@ export default function Feed() {
         setCurrentUserSurvey(data.currentUserSurvey);
       }
     } catch (e) {
-      console.error("Error fetching matches:", e);
+      console.error('Error fetching matches:', e);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    const userString = localStorage.getItem('vibe_user');
+    if (!userString) {
+      router.push('/');
+      return;
+    }
+
+    const parsedUser = JSON.parse(userString) as { id: string; name: string };
+    fetchRecommendations(parsedUser.id);
+  }, [fetchRecommendations, router]);
+
+  useEffect(() => {
+    if (selectedProfileDetail) {
+      setActivePhoto(selectedProfileDetail.profile.avatar);
+    } else {
+      setActivePhoto('');
+    }
+  }, [selectedProfileDetail]);
 
   const handleAction = (action: 'like' | 'pass', matchItem: MatchItem) => {
     if (action === 'like') {
@@ -132,6 +158,8 @@ export default function Feed() {
     };
   };
 
+  const isImageUrl = (value: string) => value.startsWith('/') || value.startsWith('http');
+
   const getProfilePhotosList = (name: string, mainAvatar: string) => {
     const list = [mainAvatar];
     if (name.includes('Maya')) list.push('/maya_1.png', '/maya_2.png');
@@ -141,7 +169,7 @@ export default function Feed() {
     return list;
   };
 
-  const mapSurveyToVibeDimensions = (survey: any): VibeDimensions => {
+  const mapSurveyToVibeDimensions = (survey: SurveyData | null): VibeDimensions => {
     return {
       communication: survey?.communication || 3,
       humor: survey?.humorType || 3,
@@ -156,18 +184,20 @@ export default function Feed() {
     };
   };
 
-  const mapBreakdownToVibeDimensions = (breakdown: any): VibeDimensions => {
+  const normalizeBreakdownScore = (score: number | undefined) => Math.round((score ?? 60) / 20);
+
+  const mapBreakdownToVibeDimensions = (breakdown: Record<string, number | undefined>): VibeDimensions => {
     return {
-      communication: Math.round(breakdown?.communication / 20) || 3,
-      humor: Math.round(breakdown?.humor / 20) || 3,
-      curiosity: Math.round(breakdown?.curiosity / 20) || 3,
-      adventure: Math.round(breakdown?.adventure / 20) || 3,
-      openness: Math.round(breakdown?.openness / 20) || 3,
-      lifestyle: Math.round(breakdown?.lifestyle / 20) || 3,
-      values: Math.round(breakdown?.values / 20) || 3,
-      energy: Math.round(breakdown?.energy / 20) || 3,
-      conflict: Math.round(breakdown?.conflict / 20) || 3,
-      spontaneity: Math.round(breakdown?.spontaneity / 20) || 3,
+      communication: normalizeBreakdownScore(breakdown.communication),
+      humor: normalizeBreakdownScore(breakdown.humor),
+      curiosity: normalizeBreakdownScore(breakdown.curiosity),
+      adventure: normalizeBreakdownScore(breakdown.adventure),
+      openness: normalizeBreakdownScore(breakdown.openness),
+      lifestyle: normalizeBreakdownScore(breakdown.lifestyle),
+      values: normalizeBreakdownScore(breakdown.values),
+      energy: normalizeBreakdownScore(breakdown.energy),
+      conflict: normalizeBreakdownScore(breakdown.conflict),
+      spontaneity: normalizeBreakdownScore(breakdown.spontaneity),
     };
   };
 
@@ -207,14 +237,10 @@ export default function Feed() {
           </div>
           
           <div className="flex gap-2 bg-bg-light p-1 border border-hairline self-start">
-            {[
-              { id: 'curated', label: 'Today\'s AI Picks' },
-              { id: 'browse', label: 'People Nearby' },
-              { id: 'surprise', label: 'Surprise Me' }
-            ].map(tab => (
+            {homeModeTabs.map(tab => (
               <button
                 key={tab.id}
-                onClick={() => setHomeMode(tab.id as any)}
+                onClick={() => setHomeMode(tab.id)}
                 className={`px-4 py-2 text-[10px] font-black uppercase transition-all cursor-pointer ${
                   homeMode === tab.id 
                     ? 'bg-primary text-white border border-primary' 
@@ -361,14 +387,10 @@ export default function Feed() {
                 Browse Nearby ({browsePicks.length})
               </span>
               <div className="flex gap-2 bg-bg-light p-1 border border-hairline text-[9px] font-black uppercase tracking-wider">
-                {[
-                  { id: 'all', label: 'All Users' },
-                  { id: 'similar', label: 'Similar Vibe' },
-                  { id: 'opposite', label: 'Opposite Vibe' }
-                ].map(f => (
+                {browseFilters.map(f => (
                   <button
                     key={f.id}
-                    onClick={() => setBrowseFilter(f.id as any)}
+                    onClick={() => setBrowseFilter(f.id)}
                     className={`px-3 py-1 cursor-pointer ${
                       browseFilter === f.id ? 'bg-white border border-hairline font-black text-dark' : 'text-gray-400'
                     }`}
@@ -545,11 +567,17 @@ export default function Feed() {
 
             {/* Main Picture box */}
             <div className="w-full h-80 relative overflow-hidden border border-hairline bg-gray-50">
-              {activePhoto && (
+              {activePhoto && isImageUrl(activePhoto) ? (
                 <img 
                   src={activePhoto} 
                   alt={selectedProfileDetail.name} 
                   className="w-full h-full object-cover object-[center_15%]"
+                />
+              ) : (
+                <div
+                  aria-label={selectedProfileDetail.name}
+                  className="w-full h-full"
+                  style={getAvatarStyle(activePhoto)}
                 />
               )}
             </div>
@@ -564,7 +592,11 @@ export default function Feed() {
                     activePhoto === photo ? 'border-primary' : 'border-hairline hover:border-gray-400'
                   }`}
                 >
-                  <img src={photo} alt="" className="w-full h-full object-cover object-center" />
+                  {isImageUrl(photo) ? (
+                    <img src={photo} alt="" className="w-full h-full object-cover object-center" />
+                  ) : (
+                    <span className="block w-full h-full" style={getAvatarStyle(photo)} />
+                  )}
                 </button>
               ))}
             </div>

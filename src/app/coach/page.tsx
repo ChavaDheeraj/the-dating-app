@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, Suspense } from 'react';
+import React, { useCallback, useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Sparkles, BarChart3, MessageSquare, Copy, Check, Info } from 'lucide-react';
 
@@ -17,6 +17,14 @@ interface CoachReport {
   };
   insights: string[];
   icebreakers: string[];
+}
+
+interface MatchRecommendation {
+  id: string;
+  name: string;
+  profile: {
+    avatar: string;
+  };
 }
 
 export default function Coach() {
@@ -87,44 +95,7 @@ function CoachContent() {
     }, 1200);
   };
 
-  useEffect(() => {
-    const userString = localStorage.getItem('vibe_user');
-    if (!userString) {
-      router.push('/');
-      return;
-    }
-    const parsedUser = JSON.parse(userString);
-    setCurrentUser(parsedUser);
-    fetchMatches(parsedUser.id);
-  }, [router]);
-
-  const fetchMatches = async (userId: string) => {
-    try {
-      const res = await fetch(`/api/matches?userId=${userId}`);
-      const data = await res.json();
-      if (data.success && data.recommendations.length > 0) {
-        const list = data.recommendations.map((r: any) => ({
-          id: r.id,
-          name: r.name,
-          avatar: r.profile.avatar
-        }));
-        setMatches(list);
-        
-        const urlMatchId = searchParams.get('matchId');
-        if (urlMatchId && list.some((m: any) => m.id === urlMatchId)) {
-          setSelectedMatchId(urlMatchId);
-          fetchCoachReport(userId, urlMatchId);
-        } else {
-          setSelectedMatchId(list[0].id);
-          fetchCoachReport(userId, list[0].id);
-        }
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const fetchCoachReport = async (userId: string, matchId: string) => {
+  const fetchCoachReport = useCallback(async (userId: string, matchId: string) => {
     setLoading(true);
     try {
       const res = await fetch(`/api/coach?userId=${userId}&matchId=${matchId}`);
@@ -141,7 +112,44 @@ function CoachContent() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  const fetchMatches = useCallback(async (userId: string) => {
+    try {
+      const res = await fetch(`/api/matches?userId=${userId}`);
+      const data = await res.json();
+      if (data.success && data.recommendations.length > 0) {
+        const list = data.recommendations.map((r: MatchRecommendation) => ({
+          id: r.id,
+          name: r.name,
+          avatar: r.profile.avatar
+        }));
+        setMatches(list);
+        
+        const urlMatchId = searchParams.get('matchId');
+        if (urlMatchId && list.some((m: MatchUser) => m.id === urlMatchId)) {
+          setSelectedMatchId(urlMatchId);
+          fetchCoachReport(userId, urlMatchId);
+        } else {
+          setSelectedMatchId(list[0].id);
+          fetchCoachReport(userId, list[0].id);
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, [fetchCoachReport, searchParams]);
+
+  useEffect(() => {
+    const userString = localStorage.getItem('vibe_user');
+    if (!userString) {
+      router.push('/');
+      return;
+    }
+    const parsedUser = JSON.parse(userString);
+    setCurrentUser(parsedUser);
+    fetchMatches(parsedUser.id);
+  }, [fetchMatches, router]);
 
   const handleMatchChange = (matchId: string) => {
     setSelectedMatchId(matchId);
